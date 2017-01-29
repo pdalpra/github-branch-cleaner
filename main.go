@@ -15,9 +15,10 @@ import (
 func main() {
 	var (
 		startTime     = time.Now()
-		token         = requiredEnvVar("GITHUB_TOKEN")
-		organization  = requiredEnvVar("GITHUB_ORGANIZATION")
-		exclusionList = parseExclusionList(optionalEnvVar("EXCLUSION_LIST", "master"))
+		token         = requiredStringEnvVar("GITHUB_TOKEN")
+		organization  = requiredStringEnvVar("GITHUB_ORGANIZATION")
+		exclusionList = parseExclusionList(optionalStringEnvVar("EXCLUSION_LIST", "master"))
+		dryRun        = optionalBoolEnvVar("DRY_RUN", false)
 	)
 
 	// Setup Github API client, with persistent caching
@@ -38,7 +39,7 @@ func main() {
 
 	for _, repository := range repositories {
 		go func(c *github.Client, repo *github.Repository) {
-			t.Done(processRepository(c, repo, exclusionList))
+			t.Done(processRepository(c, repo, exclusionList, dryRun))
 		}(client, repository)
 		if errCount := t.Throttle(); errCount != 0 {
 			logAndExitIfError(t.Err())

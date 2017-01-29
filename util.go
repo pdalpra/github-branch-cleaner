@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -13,7 +14,7 @@ func logAndExitIfError(err error) {
 	}
 }
 
-func requiredEnvVar(varName string) string {
+func requiredStringEnvVar(varName string) string {
 	v := os.Getenv(varName)
 	if v == "" {
 		logAndExitIfError(fmt.Errorf("%s environment variable is not defined", varName))
@@ -21,12 +22,22 @@ func requiredEnvVar(varName string) string {
 	return v
 }
 
-func optionalEnvVar(varName string, defaultValue string) string {
+func optionalStringEnvVar(varName string, defaultValue string) string {
 	v := os.Getenv(varName)
 	if v == "" {
 		return defaultValue
 	}
 	return v
+}
+
+func optionalBoolEnvVar(varName string, defaultValue bool) bool {
+	v := os.Getenv(varName)
+	if v == "" {
+		return defaultValue
+	}
+	b, err := strconv.ParseBool(v)
+	logAndExitIfError(err)
+	return b
 }
 
 func parseExclusionList(envVar string) []string {

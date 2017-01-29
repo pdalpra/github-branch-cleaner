@@ -29,7 +29,7 @@ func getAllRepositories(client *github.Client, organization string) ([]*github.R
 	return repositories, nil
 }
 
-func processRepository(client *github.Client, repository *github.Repository, excludedBranches []string) error {
+func processRepository(client *github.Client, repository *github.Repository, excludedBranches []string, dryRun bool) error {
 	var (
 		owner    = *repository.Owner.Login
 		repoName = *repository.Name
@@ -64,11 +64,12 @@ func processRepository(client *github.Client, repository *github.Repository, exc
 			// -> the source branch was on the same repository (don't touch forks, leave it to jessfraz/ghb0t)
 			// -> the branch is not in the exclusion list
 			if branch == sourceBranch && sourceRepo == owner && !excluded.Has(sourceBranch) {
-				msgPrefix := fmt.Sprintf("%s/%s#%d => ", owner, repoName, *closedPR.Number)
-				//if _, err := client.Git.DeleteRef(owner, repoName, fmt.Sprintf("refs/%s", sourceBranch)); err != nil {
-				//	return err
-				//}
-				fmt.Printf("%s merged and unused branch %s deleted.\n", msgPrefix, sourceBranch)
+				if !dryRun {
+					if _, err := client.Git.DeleteRef(owner, repoName, fmt.Sprintf("refs/%s", sourceBranch)); err != nil {
+						return err
+					}
+				}
+				fmt.Printf("%s/%s#%d => unused branch %s deleted.\n", owner, repoName, *closedPR.Number, sourceBranch)
 
 			}
 		}
