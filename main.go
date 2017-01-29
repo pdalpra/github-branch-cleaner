@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/google/go-github/github"
@@ -15,9 +14,10 @@ import (
 
 func main() {
 	var (
-		startTime    = time.Now()
-		token        = getEnvVar("GITHUB_TOKEN")
-		organization = getEnvVar("GITHUB_ORGANIZATION")
+		startTime     = time.Now()
+		token         = requiredEnvVar("GITHUB_TOKEN")
+		organization  = requiredEnvVar("GITHUB_ORGANIZATION")
+		exclusionList = parseExclusionList(optionalEnvVar("EXCLUSION_LIST", "master"))
 	)
 
 	// Setup Github API client, with persistent caching
@@ -38,7 +38,7 @@ func main() {
 
 	for _, repository := range repositories {
 		go func(c *github.Client, repo *github.Repository) {
-			t.Done(processRepository(c, repo))
+			t.Done(processRepository(c, repo, exclusionList))
 		}(client, repository)
 		if errCount := t.Throttle(); errCount != 0 {
 			logAndExitIfError(t.Err())
@@ -46,19 +46,4 @@ func main() {
 	}
 
 	fmt.Printf("Total proccessing time: %.2fs.\n", time.Now().Sub(startTime).Seconds())
-}
-
-func logAndExitIfError(err error) {
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
-
-func getEnvVar(varName string) string {
-	v := os.Getenv(varName)
-	if v == "" {
-		logAndExitIfError(fmt.Errorf("%s environment variable is not defined !", varName))
-	}
-	return v
 }

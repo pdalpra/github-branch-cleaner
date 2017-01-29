@@ -29,39 +29,47 @@ func getAllRepositories(client *github.Client, organization string) ([]*github.R
 	return repositories, nil
 }
 
-func processRepository(client *github.Client, repository *github.Repository) error {
+func processRepository(client *github.Client, repository *github.Repository, excludedBranches []string) error {
 	var (
-		owner         = *repository.Owner.Login
-		repoName      = *repository.Name
-		exclusionList = set.NewNonTS("develop", "release", "master")
+		owner    = *repository.Owner.Login
+		repoName = *repository.Name
 	)
-	allClosed, err := pullRequestsByState(client, owner, repoName, "closed")
+	// Collect branches than are currently in use as target or source branch in open PRs, to avoid deleting them
+	openPRs, err := pullRequestsByState(client, owner, repoName, "open")
 	if err != nil {
 		return err
 	}
-	allOpen, err := pullRequestsByState(client, owner, repoName, "open")
+	excluded := buildExclusionList(excludedBranches, openPRs)
+
+	// Collect all closed PRs to scan
+	closedPRs, err := pullRequestsByState(client, owner, repoName, "closed")
 	if err != nil {
 		return err
 	}
-	allBranches, err := listBranches(client, owner, repoName)
+
+	// Collect all existing branches, try not to delete already deleted branches
+	existingBranches, err := listBranches(client, owner, repoName)
 	if err != nil {
 		return err
 	}
-	// Collect branches than are currently in use as target or source branch, to avoid deleting them
-	for _, open := range allOpen {
-		exclusionList.Add(*open.Base.Ref)
-		exclusionList.Add(*open.Head.Ref)
-	}
-	for _, closedPR := range allClosed {
-		for _, branch := range allBranches {
-			if branch == *closedPR.Head.Ref && *closedPR.Head.User.Login == owner {
+
+	for _, closedPR := range closedPRs {
+		var (
+			sourceBranch = *closedPR.Head.Ref
+			sourceRepo   = *closedPR.Head.User.Login
+		)
+		for _, branch := range existingBranches {
+			// Delete if:
+			// -> the old source branch matches an existing source branch
+			// -> the source branch was on the same repository (don't touch forks, leave it to jessfraz/ghb0t)
+			// -> the branch is not in the exclusion list
+			if branch == sourceBranch && sourceRepo == owner && !excluded.Has(sourceBranch) {
 				msgPrefix := fmt.Sprintf("%s/%s#%d => ", owner, repoName, *closedPR.Number)
-				if !exclusionList.Has(*closedPR.Head.Ref) {
-					if _, err := client.Git.DeleteRef(owner, repoName, fmt.Sprintf("refs/%s", *closedPR.Head.Ref)); err != nil {
-						return err
-					}
-					fmt.Printf("%s merged and unused branch %s deleted.\n", msgPrefix, *closedPR.Head.Ref)
-				}
+				//if _, err := client.Git.DeleteRef(owner, repoName, fmt.Sprintf("refs/%s", sourceBranch)); err != nil {
+				//	return err
+				//}
+				fmt.Printf("%s merged and unused branch %s deleted.\n", msgPrefix, sourceBranch)
+
 			}
 		}
 	}
@@ -88,6 +96,18 @@ func pullRequestsByState(client *github.Client, owner string, repoName string, s
 
 	}
 	return pullRequests, nil
+}
+
+func buildExclusionList(excludedBranches []string, openPRs []*github.PullRequest) *set.SetNonTS {
+	excluded := set.NewNonTS()
+	for _, branch := range excludedBranches {
+		excluded.Add(branch)
+	}
+	for _, openPR := range openPRs {
+		excluded.Add(*openPR.Base.Ref)
+		excluded.Add(*openPR.Head.Ref)
+	}
+	return excluded
 }
 
 func listBranches(client *github.Client, owner string, repoName string) ([]string, error) {
